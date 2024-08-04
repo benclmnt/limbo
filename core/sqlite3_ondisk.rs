@@ -343,12 +343,12 @@ impl PageContent {
     }
 
     pub fn cell_get_raw_region(&self, idx: usize) -> (usize, usize) {
-        let mut buf = self.buffer.borrow_mut();
-        let buf = buf.as_mut_slice();
+        let buf = self.buffer.borrow();
+        let buf = buf.as_slice();
         self.cell_get_raw_region_borrowed(idx, buf)
     }
 
-    pub fn cell_get_raw_region_borrowed(&self, idx: usize, buf: &mut [u8]) -> (usize, usize) {
+    pub fn cell_get_raw_region_borrowed(&self, idx: usize, buf: &[u8]) -> (usize, usize) {
         let ncells = self.cell_count();
         let cell_start = match self.page_type() {
             PageType::IndexInterior => 12,
@@ -669,12 +669,12 @@ pub fn read_record_header(
     let mut pos = 0;
     let (header_size, nr) = read_varint(payload)?;
     assert!((header_size as usize) >= nr);
+    let mut offset = header_size as usize;
     let mut header_size = (header_size as usize) - nr;
     pos += nr;
     let mut serial_types = Vec::with_capacity(header_size);
 
-    let mut offsets = Vec::new();
-    let mut offset = header_size + 1;
+    let mut offsets = Vec::with_capacity(header_size);
     while header_size > 0 {
         let (serial_type, nr) = read_varint(&payload[pos..])?;
         let serial_type = SerialType::try_from(serial_type)?;
@@ -688,6 +688,12 @@ pub fn read_record_header(
         assert!(offset + size <= payload.len());
         offset += size;
     }
+    let (_, payload_size) = read_varint(&payload[pos..]).unwrap();
+    let (_, rowid_size) = read_varint(&payload[pos + payload_size..]).unwrap();
+    for offset in offsets.iter_mut() {
+        *offset += payload_size + rowid_size;
+    }
+
     Ok(RecordOffset {
         page_idx,
         cell_idx,

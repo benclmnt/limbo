@@ -843,11 +843,11 @@ impl Cursor for BTreeCursor {
                 _payload,
                 first_overflow_page: _,
             }) => {
-                for (i, offset) in record_offsets.offsets.iter().enumerate() {
-                    let serial_type = &record_offsets.types[i];
-                    let payload = &_payload[*offset..*offset + serial_type_size(serial_type)];
-                    owned_record.push(read_value(payload, &serial_type).unwrap().0)
-                }
+                // for (i, offset) in record_offsets.offsets.iter().enumerate() {
+                //     let serial_type = &record_offsets.types[i];
+                //     let payload = &_payload[*offset..*offset + serial_type_size(serial_type)];
+                //     owned_record.push(read_value(payload, &serial_type).unwrap().0)
+                // }
                 let mut record = self.record.borrow_mut();
                 *record = Some(OwnedRecord::new(owned_record))
             }
@@ -877,29 +877,18 @@ impl Cursor for BTreeCursor {
 
         let page = page.contents.read().unwrap();
         let page = page.as_ref().unwrap();
-        let cell = &page.cell_get(record_offsets.cell_idx)?;
-        match &cell {
-            BTreeCell::TableInteriorCell(TableInteriorCell {
-                _left_child_page,
-                _rowid,
-            }) => {
-                unimplemented!()
-            }
-            BTreeCell::TableLeafCell(TableLeafCell {
-                _rowid,
-                _payload,
-                first_overflow_page: _,
-            }) => {
-                assert!(col < record_offsets.offsets.len());
+        let buf = page.buffer.borrow();
+        let buf = buf.as_slice();
+        let page_type = page.page_type();
+        match page_type {
+            PageType::TableLeaf => {
+                let (start, _) = page.cell_get_raw_region(record_offsets.cell_idx);
                 let offset = record_offsets.offsets[col];
                 let serial_type = &record_offsets.types[col];
-                let payload = &_payload[offset..offset + serial_type_size(serial_type)];
-                Ok(Some(read_value(payload, &serial_type).unwrap().0))
+                let (val, _) = read_value(&buf[start + offset..], serial_type).unwrap();
+                Ok(Some(val))
             }
-            BTreeCell::IndexInteriorCell(_) => {
-                unimplemented!();
-            }
-            BTreeCell::IndexLeafCell(_) => {
+            _ => {
                 unimplemented!();
             }
         }
